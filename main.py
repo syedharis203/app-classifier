@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify 
 import logging
 import json
 import requests
@@ -133,4 +133,5 @@ def classify():
     return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=5000)
+
