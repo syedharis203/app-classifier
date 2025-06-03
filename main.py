@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify
 import logging
 import json
@@ -6,21 +5,14 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 import google.generativeai as genai
-import os
 
-# Load API key from env variable or fallback
-GENAI_KEY = os.environ.get("GENAI_API_KEY", "AIzaSyCpXOTRkqAiOgBi8MVkedeQd-6BbFd6UJU")
-genai.configure(api_key=GENAI_KEY)
+# Configure Gemini API
+genai.configure(api_key="AIzaSyCpXOTRkqAiOgBi8MVkedeQd-6BbFd6UJU")
 model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
 
 app = Flask(__name__)
 
-@app.route("/classify", methods=["POST"])
-def classify():
-    data = request.json
-    app_link = data.get("url", "")
-    result = classify_url_or_app(app_link)
-    return result
+# Heuristic-based term lists
 risky_terms = ["malware", "phishing", "virus", "trojan", "unofficial", ".apk", "bet", "rummy", "lottery", "fantasy", "dream11"]
 explicit_terms = ["porn", "adult", "sex", "xxx", "erotic"]
 
@@ -31,7 +23,8 @@ def scrape_play_store(url):
         soup = BeautifulSoup(response.text, "html.parser")
         name = soup.find("h1").text if soup.find("h1") else "Unknown"
         desc = soup.find("meta", attrs={"name": "description"})
-        return name, desc["content"] if desc else "No description"
+        description = desc["content"] if desc else "No description found"
+        return name, description
     except Exception as e:
         logging.warning(f"Play Store scrape failed: {e}")
         return "Unknown", "No description"
@@ -63,7 +56,6 @@ def classify_url_or_app(app_link):
         platform = "Apple App Store"
         app_identifier = app_link.split("/")[-1]
         name, description = scrape_app_store(app_link)
-
     else:
         name = "Unknown"
         description = "No description"
@@ -71,23 +63,23 @@ def classify_url_or_app(app_link):
     lower_url = app_link.lower()
 
     if any(term in lower_url for term in explicit_terms):
-        return {
+        return jsonify({
             "platform": platform,
             "app_identifier": app_identifier,
             "category": "Explicit Content",
             "risk_level": "Very High",
             "spam_status": "True"
-        }
+        })
 
     if any(term in lower_url for term in risky_terms):
         cat = "Gambling" if any(g in lower_url for g in ["rummy", "dream11", "fantasy", "bet", "lottery"]) else "Malicious"
-        return {
+        return jsonify({
             "platform": platform,
             "app_identifier": app_identifier,
             "category": cat,
             "risk_level": "Very High",
             "spam_status": "True"
-        }
+        })
 
     prompt = f"""
 You are a cybersecurity and content classification AI.
@@ -106,33 +98,35 @@ Return this format:
   "risk_level": "...",
   "spam_status": "..."
 }}
+
+Categories: Social Media, Entertainment, Gaming, Gambling, Finance / Banking, Productivity, Education, E-Commerce, Communication,delivery,flight-booking, Utilities, Health & Fitness, Travel, Explicit Content, Malicious, Phishing, Unknown
+Risk Levels: Very High, High, Medium, Low, Unknown
+Spam Status: True, False
 """
 
     try:
         result = model.generate_content(prompt)
-        return json.loads(result.text)
+        return jsonify(json.loads(result.text.strip()))
     except Exception as e:
         logging.error(f"Gemini AI error: {e}")
-        return {
+        return jsonify({
             "platform": platform,
             "app_identifier": app_identifier,
             "category": "Unknown",
             "risk_level": "Unknown",
             "spam_status": "Unknown"
-        }
+        })
 
-@app.route('/classify', methods=['POST'])
-def classify():
-    data = request.json
-    url = data.get("url", "")
-    if not url:
-        return jsonify({"error": "Missing 'url' parameter"}), 400
-    result = classify_url_or_app(url)
-    return jsonify(result)
-
-@app.route('/', methods=['GET'])
+@app.route("/", methods=["GET"])
 def home():
-    return "🛡️ App Classification API is running!", 200
+    return "🛡️ App Classification API is running!"
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+@app.route("/classify", methods=["POST"])
+def classify_route():
+    data = request.get_json()
+    url = data.get("url", "")
+    return classify_url_or_app(url)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
+
