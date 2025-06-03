@@ -15,6 +15,12 @@ model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
 
 app = Flask(__name__)
 
+@app.route("/classify", methods=["POST"])
+def classify():
+    data = request.json
+    app_link = data.get("url", "")
+    result = classify_url_or_app(app_link)
+    return result
 risky_terms = ["malware", "phishing", "virus", "trojan", "unofficial", ".apk", "bet", "rummy", "lottery", "fantasy", "dream11"]
 explicit_terms = ["porn", "adult", "sex", "xxx", "erotic"]
 
