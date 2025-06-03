@@ -6,11 +6,12 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 import google.generativeai as genai
 
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+
 # Configure Gemini API
 genai.configure(api_key="AIzaSyCpXOTRkqAiOgBi8MVkedeQd-6BbFd6UJU")
 model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
-
-app = Flask(__name__)
 
 # Heuristic-based term lists
 risky_terms = ["malware", "phishing", "virus", "trojan", "unofficial", ".apk", "bet", "rummy", "lottery", "fantasy", "dream11"]
@@ -56,6 +57,7 @@ def classify_url_or_app(app_link):
         platform = "Apple App Store"
         app_identifier = app_link.split("/")[-1]
         name, description = scrape_app_store(app_link)
+
     else:
         name = "Unknown"
         description = "No description"
@@ -63,23 +65,23 @@ def classify_url_or_app(app_link):
     lower_url = app_link.lower()
 
     if any(term in lower_url for term in explicit_terms):
-        return jsonify({
+        return {
             "platform": platform,
             "app_identifier": app_identifier,
             "category": "Explicit Content",
             "risk_level": "Very High",
             "spam_status": "True"
-        })
+        }
 
     if any(term in lower_url for term in risky_terms):
         cat = "Gambling" if any(g in lower_url for g in ["rummy", "dream11", "fantasy", "bet", "lottery"]) else "Malicious"
-        return jsonify({
+        return {
             "platform": platform,
             "app_identifier": app_identifier,
             "category": cat,
             "risk_level": "Very High",
             "spam_status": "True"
-        })
+        }
 
     prompt = f"""
 You are a cybersecurity and content classification AI.
@@ -99,34 +101,36 @@ Return this format:
   "spam_status": "..."
 }}
 
-Categories: Social Media, Entertainment, Gaming, Gambling, Finance / Banking, Productivity, Education, E-Commerce, Communication,delivery,flight-booking, Utilities, Health & Fitness, Travel, Explicit Content, Malicious, Phishing, Unknown
+Categories: Social Media, Entertainment, Gaming, Gambling, Finance / Banking, Productivity, Education, E-Commerce, Communication, delivery, flight-booking, Utilities, Health & Fitness, Travel, Explicit Content, Malicious, Phishing, Unknown
 Risk Levels: Very High, High, Medium, Low, Unknown
 Spam Status: True, False
 """
 
     try:
         result = model.generate_content(prompt)
-        return jsonify(json.loads(result.text.strip()))
+        return json.loads(result.text)
     except Exception as e:
         logging.error(f"Gemini AI error: {e}")
-        return jsonify({
+        return {
             "platform": platform,
             "app_identifier": app_identifier,
             "category": "Unknown",
             "risk_level": "Unknown",
             "spam_status": "Unknown"
-        })
+        }
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "🛡️ App Classification API is running!"
 
 @app.route("/classify", methods=["POST"])
-def classify_route():
+def classify():
     data = request.get_json()
-    url = data.get("url", "")
-    return classify_url_or_app(url)
+    app_link = data.get("url")
+    if not app_link:
+        return jsonify({"error": "Missing 'url' field"}), 400
+    result = classify_url_or_app(app_link)
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
